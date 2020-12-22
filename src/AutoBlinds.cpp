@@ -21,8 +21,6 @@
 static void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice& peer, void* context);
 void setup();
 void loop();
-void RotateStepperMotorClockwiseUp();
-void RotateStepperMotorCounterclockwiseDown();
 #line 16 "/Users/Mat/Desktop/AutoBlinds/AutoBlinds/src/AutoBlinds.ino"
 SerialLogHandler logHandler(115200, LOG_LEVEL_ERROR, {
     { "app", LOG_LEVEL_TRACE }, // enable all app messages
@@ -49,6 +47,7 @@ typedef struct {
 } BlindsState_t;
 
 int i, j;
+bool sRelayState;
 
 static BlindsState_t sBlindsState;
 
@@ -75,11 +74,8 @@ static void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice&
 }
 
 void setup() {
-  // Setup Stepper Motor control pins
-  pinMode(D4, OUTPUT);
-  pinMode(D5, OUTPUT);
-  pinMode(D6, OUTPUT);
-  pinMode(D7, OUTPUT);
+  // Setup Stepper relay control pin
+  pinMode(D2, OUTPUT);
 
   // Initialize Blinds State Structure
   sBlindsState.GoUp         = 0;
@@ -104,61 +100,71 @@ void setup() {
 
   i = 0;
   j = 0;
+  sRelayState = false;
 }
  
 
 void loop() {
 
-  // int loops = 1000;
 
-  // if (i == 100)
+  if (i == 3000)
+  {
+    
+    i = 0;
+    j += 1;
+    sRelayState = !sRelayState;
+    Log.info("changing state: %d", sRelayState);
+  }
+  i += 1;
+
+  // if (sRelayState)
   // {
-  //   //Log.info("looping...: %d", j);
-  //   i = 0;
-  //   j += 1;
+  //   digitalWrite(D2, HIGH);
   // }
-  // i += 1;
+  // else
+  // {
+  //   digitalWrite(D2, LOW);
+  // }
+  digitalWrite(D2, HIGH);
+  delay(2);
 
-  if (sBlindsState.GoUp)
-  {
-    RotateStepperMotorClockwiseUp();
-  }
-  else if (sBlindsState.GoDown)
-  {
-    RotateStepperMotorCounterclockwiseDown();
-  }
-
-
-  
+  // if (sBlindsState.GoUp)
+  // {
+  //   RotateStepperMotorClockwiseUp();
+  // }
+  // else if (sBlindsState.GoDown)
+  // {
+  //   RotateStepperMotorCounterclockwiseDown();
+  // }
 }
 
-void RotateStepperMotorClockwiseUp()
-{
-  digitalWrite(D7, HIGH); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-  delay(sStepUpDelay);
+// void RotateStepperMotorClockwiseUp()
+// {
+//   digitalWrite(D7, HIGH); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
+//   delay(sStepUpDelay);
 
-  digitalWrite(D7, LOW); digitalWrite(D6, HIGH); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-  delay(sStepUpDelay);
+//   digitalWrite(D7, LOW); digitalWrite(D6, HIGH); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
+//   delay(sStepUpDelay);
 
-  digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, HIGH); digitalWrite(D4, LOW);
-  delay(sStepUpDelay);
+//   digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, HIGH); digitalWrite(D4, LOW);
+//   delay(sStepUpDelay);
 
-  digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, HIGH);
-  delay(sStepUpDelay);
-}
+//   digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, HIGH);
+//   delay(sStepUpDelay);
+// }
 
-void RotateStepperMotorCounterclockwiseDown()
-{
-  digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, HIGH);
-  delay(sStepDownDelay);
+// void RotateStepperMotorCounterclockwiseDown()
+// {
+//   digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, HIGH);
+//   delay(sStepDownDelay);
 
-  digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, HIGH); digitalWrite(D4, LOW);
-  delay(sStepDownDelay);
+//   digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, HIGH); digitalWrite(D4, LOW);
+//   delay(sStepDownDelay);
 
-  digitalWrite(D7, LOW); digitalWrite(D6, HIGH); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-  delay(sStepDownDelay);
+//   digitalWrite(D7, LOW); digitalWrite(D6, HIGH); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
+//   delay(sStepDownDelay);
 
-  digitalWrite(D7, HIGH); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-  delay(sStepDownDelay);
-}
+//   digitalWrite(D7, HIGH); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
+//   delay(sStepDownDelay);
+// }
 
