@@ -1,33 +1,19 @@
 /*
  * Project AutoBlinds
  * Description: Make my blinds controllable via bluetooth and mobile app! Eventually add sensors to make automatic?
- *   Parts:
+ * Parts:
  *   Particle Argon
- *   Stepper Motor Driver (ULN2003) + Stepper Motor: (28byj-48)
- *     32*63.68395 steps per revolution = 2037.8864 ~ 2038
+ *   6-24 Volt DC Gearhead Motor
+ *   3 Relays allowing for an H-Bridge wiring setup to control the direction and power to the motor
  * Author: Mathieu Rauch
  * Date: Dec 5, 2020
  */
 
 #include "Particle.h"
-//#include "/Users/Mat/Particle/community/libraries/Stepper@1.1.3/src/Stepper.h"
-//#include <Stepper.h>
 
 SerialLogHandler logHandler(115200, LOG_LEVEL_ERROR, {
     { "app", LOG_LEVEL_TRACE }, // enable all app messages
 });
-
-// Bluetooth characteristics
-const char* serviceUuid  = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
-const char* BlindsUp     = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
-const char* BlindsDown   = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
-
-// Stepper motor setup
-const int stepsPerRevolution = 2038;
-const int sStepUpDelay         = 15;
-const int sStepDownDelay       = 2;
-
-//Stepper stepper(stepsPerRevolution, 4, 5, 6, 7);
 
 // Variables for keeping Blinds state
 typedef struct {
@@ -36,11 +22,30 @@ typedef struct {
   uint8_t SensorTop;
   uint8_t SensorBottom;
 } BlindsState_t;
-
-int i, j;
-bool sRelayState;
-
 static BlindsState_t sBlindsState;
+
+//          Blinds H-Bridge relay control setup and control functions  
+/*________________________________________________________________________________________*/
+
+// Set H-Bridge relay control pins (Swap Hot/Cold relays must always be swapped together) 
+int Pin_BlindsSwapColdRelay  = D5;
+int Pin_BlindsSwapHotRelay   = D6;
+int Pin_BlindsStartStopRelay = D7;
+
+// Define H-Bridge relay control functions
+void RollBlindsUp()   { digitalWrite(Pin_BlindsSwapColdRelay, HIGH); digitalWrite(Pin_BlindsSwapHotRelay, HIGH); }
+void RollBlindsDown() { digitalWrite(Pin_BlindsSwapColdRelay,  LOW); digitalWrite(Pin_BlindsSwapHotRelay,  LOW);  }
+
+void RollBlindsOn()   { digitalWrite(Pin_BlindsStartStopRelay, HIGH); }
+void RollBlindsOff()  { digitalWrite(Pin_BlindsStartStopRelay,  LOW); }
+
+//          Define Bluetooth services and OnDataReceived callback function
+/*________________________________________________________________________________________*/
+
+// Bluetooth characteristics
+const char* serviceUuid  = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* BlindsUp     = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* BlindsDown   = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
 
 // Static function for handling Bluetooth Low Energy callbacks
 static void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice& peer, void* context) {
@@ -64,9 +69,22 @@ static void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice&
   }
 }
 
+//          
+/*________________________________________________________________________________________*/
+
+int i, j;
+bool sRelayState;
+
+
+
+//                                  setup() and loop() functions
+/*________________________________________________________________________________________*/
+
 void setup() {
-  // Setup Stepper relay control pin
-  pinMode(D2, OUTPUT);
+  // Setup relay control pins (Swap Hot/Cold relays must always be swapped together)
+  pinMode(Pin_BlindsSwapColdRelay,  OUTPUT);
+  pinMode(Pin_BlindsSwapHotRelay,   OUTPUT);
+  pinMode(Pin_BlindsStartStopRelay, OUTPUT);
 
   // Initialize Blinds State Structure
   sBlindsState.GoUp         = 0;
@@ -97,65 +115,13 @@ void setup() {
 
 void loop() {
 
-
-  if (i == 3000)
-  {
-    
-    i = 0;
-    j += 1;
-    sRelayState = !sRelayState;
-    Log.info("changing state: %d", sRelayState);
-  }
-  i += 1;
-
-  // if (sRelayState)
-  // {
-  //   digitalWrite(D2, HIGH);
-  // }
-  // else
-  // {
-  //   digitalWrite(D2, LOW);
-  // }
-  digitalWrite(D2, HIGH);
-  delay(2);
-
-  // if (sBlindsState.GoUp)
-  // {
-  //   RotateStepperMotorClockwiseUp();
-  // }
-  // else if (sBlindsState.GoDown)
-  // {
-  //   RotateStepperMotorCounterclockwiseDown();
-  // }
+  RollBlindsOn();
+  delay(3000);
+  RollBlindsUp();
+  delay(3000);
+  RollBlindsDown();
+  delay(3000);
+  RollBlindsOff();
+  delay(3000);
 }
-
-// void RotateStepperMotorClockwiseUp()
-// {
-//   digitalWrite(D7, HIGH); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-//   delay(sStepUpDelay);
-
-//   digitalWrite(D7, LOW); digitalWrite(D6, HIGH); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-//   delay(sStepUpDelay);
-
-//   digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, HIGH); digitalWrite(D4, LOW);
-//   delay(sStepUpDelay);
-
-//   digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, HIGH);
-//   delay(sStepUpDelay);
-// }
-
-// void RotateStepperMotorCounterclockwiseDown()
-// {
-//   digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, HIGH);
-//   delay(sStepDownDelay);
-
-//   digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, HIGH); digitalWrite(D4, LOW);
-//   delay(sStepDownDelay);
-
-//   digitalWrite(D7, LOW); digitalWrite(D6, HIGH); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-//   delay(sStepDownDelay);
-
-//   digitalWrite(D7, HIGH); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-//   delay(sStepDownDelay);
-// }
 
