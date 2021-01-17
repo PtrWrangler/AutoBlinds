@@ -10,8 +10,8 @@
  */
 
 #include "Particle.h"
-//#include "/Users/Mat/Particle/community/libraries/Stepper@1.1.3/src/Stepper.h"
-//#include <Stepper.h>
+// #include "/Users/Mat/Particle/community/libraries/Stepper@1.1.3/src/Stepper.h"
+#include <Stepper.h>
 
 SerialLogHandler logHandler(115200, LOG_LEVEL_ERROR, {
     { "app", LOG_LEVEL_TRACE }, // enable all app messages
@@ -23,11 +23,16 @@ const char* BlindsUp     = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 const char* BlindsDown   = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
 
 // Stepper motor setup
-const int stepsPerRevolution = 2038;
+// const int stepsPerRevolution = 2038;
+const int stepsPerRevolution   = 48;
 const int sStepUpDelay         = 15;
 const int sStepDownDelay       = 2;
 
-//Stepper stepper(stepsPerRevolution, 4, 5, 6, 7);
+int sMotorPin1 = D2;
+int sMotorPin2 = D3;
+int sMotorPin3 = D4;
+int sMotorPin4 = D5;
+Stepper myStepper(stepsPerRevolution, sMotorPin1, sMotorPin2, sMotorPin3, sMotorPin4);
 
 // Variables for keeping Blinds state
 typedef struct {
@@ -36,9 +41,6 @@ typedef struct {
   uint8_t SensorTop;
   uint8_t SensorBottom;
 } BlindsState_t;
-
-int i, j;
-
 static BlindsState_t sBlindsState;
 
 // Static function for handling Bluetooth Low Energy callbacks
@@ -65,10 +67,10 @@ static void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice&
 
 void setup() {
   // Setup Stepper Motor control pins
-  pinMode(D4, OUTPUT);
-  pinMode(D5, OUTPUT);
-  pinMode(D6, OUTPUT);
-  pinMode(D7, OUTPUT);
+  pinMode(sMotorPin1, OUTPUT);
+  pinMode(sMotorPin2, OUTPUT);
+  pinMode(sMotorPin3, OUTPUT);
+  pinMode(sMotorPin4, OUTPUT);
 
   // Initialize Blinds State Structure
   sBlindsState.GoUp         = 0;
@@ -90,32 +92,33 @@ void setup() {
   advData.appendServiceUUID(BlindsService);   // Add the Blinds Level service
   BLE.advertise(&advData);                    // Start advertising!
 
-
-  i = 0;
-  j = 0;
+  myStepper.setSpeed(500);
 }
  
 
 void loop() {
 
-  // int loops = 1000;
+  // step one revolution in one direction:
+    Serial.println("clockwise");
+    myStepper.step(stepsPerRevolution);
+    myStepper.step(stepsPerRevolution);
+    myStepper.step(stepsPerRevolution);
+    delay(100);
 
-  // if (i == 100)
-  // {
-  //   //Log.info("looping...: %d", j);
-  //   i = 0;
-  //   j += 1;
-  // }
-  // i += 1;
+    // step one revolution in the other direction:
+    Serial.println("counterclockwise");
+    myStepper.step(-stepsPerRevolution);
+    delay(100);
 
-  if (sBlindsState.GoUp)
-  {
-    RotateStepperMotorClockwiseUp();
-  }
-  else if (sBlindsState.GoDown)
-  {
-    RotateStepperMotorCounterclockwiseDown();
-  }
+
+//   if (sBlindsState.GoUp)
+//   {
+//     RotateStepperMotorClockwiseUp();
+//   }
+//   else if (sBlindsState.GoDown)
+//   {
+//     RotateStepperMotorCounterclockwiseDown();
+//   }
 
 
   
