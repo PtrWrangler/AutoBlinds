@@ -43,8 +43,8 @@ static BlindsState_t sBlindsState;
 /*________________________________________________________________________________________*/
 
 // Set H-Bridge relay control pins (Swap Hot/Cold relays must always be swapped together) 
-int Pin_IrSensorTop          = D2;
-int Pin_IrSensorBottom       = D3;
+int Pin_IrSensorTop          = D3;
+int Pin_IrSensorBottom       = D2;
 int Pin_BlindsSwapColdRelay  = D5;
 int Pin_BlindsSwapHotRelay   = D6;
 int Pin_BlindsStartStopRelay = D7;
@@ -109,6 +109,9 @@ static void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice&
   }
 }
 
+int sPrevSensorTop;
+int sPrevSensorBottom;
+
 //                                  setup() and loop() functions
 /*________________________________________________________________________________________*/
 
@@ -148,12 +151,26 @@ void setup() {
   BleAdvertisingData advData;
   advData.appendServiceUUID(BlindsService);   // Add the Blinds Level service
   BLE.advertise(&advData);                    // Start advertising!
+
+  sPrevSensorTop = 0;
+  sPrevSensorBottom = 0;
 }
  
 
 void loop() {
   sBlindsState.SensorTop    = digitalRead(Pin_IrSensorTop);
   sBlindsState.SensorBottom = digitalRead(Pin_IrSensorBottom);
+
+  if (sBlindsState.SensorTop != sPrevSensorTop)
+  {
+    Log.info("Blinds SensorTop changed: %d", sBlindsState.SensorTop);
+    sPrevSensorTop = sBlindsState.SensorTop;
+  }
+  if (sBlindsState.SensorBottom != sPrevSensorBottom)
+  {
+    Log.info("Blinds SensorBottom changed: %d", sBlindsState.SensorBottom);
+    sPrevSensorBottom = sBlindsState.SensorBottom;
+  }
 
   bool lCalcActivatePower = false;
 
@@ -167,7 +184,7 @@ void loop() {
   {
     RollBlindsDown();
     if (sBlindsState.Power && sBlindsState.SensorBottom)
-    lCalcActivatePower = true;
+      lCalcActivatePower = true;
   }
   
   BlindsSetPower(lCalcActivatePower);
