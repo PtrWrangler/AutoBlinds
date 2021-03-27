@@ -1,45 +1,75 @@
 /*
  * Project AutoBlinds
  * Description: Make my blinds controllable via bluetooth and mobile app! Eventually add sensors to make automatic?
- *   Parts:
+ * Parts:
  *   Particle Argon
- *   Stepper Motor Driver (ULN2003) + Stepper Motor: (28byj-48)
- *     32*63.68395 steps per revolution = 2037.8864 ~ 2038
+ *   6-24 Volt DC Gearhead Motor
+ *   3 Relays allowing for an H-Bridge wiring setup to control the direction and power to the motor
  * Author: Mathieu Rauch
  * Date: Dec 5, 2020
  */
 
 #include "Particle.h"
-//#include "/Users/Mat/Particle/community/libraries/Stepper@1.1.3/src/Stepper.h"
-//#include <Stepper.h>
+
+// Do not connect to the LAN and internet
+SYSTEM_MODE(MANUAL);
 
 SerialLogHandler logHandler(115200, LOG_LEVEL_ERROR, {
     { "app", LOG_LEVEL_TRACE }, // enable all app messages
 });
 
-// Bluetooth characteristics
-const char* serviceUuid  = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
-const char* BlindsUp     = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
-const char* BlindsDown   = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
-
-// Stepper motor setup
-const int stepsPerRevolution = 2038;
-const int sStepUpDelay         = 15;
-const int sStepDownDelay       = 2;
-
-//Stepper stepper(stepsPerRevolution, 4, 5, 6, 7);
-
 // Variables for keeping Blinds state
 typedef struct {
+  uint8_t Power;
   uint8_t GoUp;
   uint8_t GoDown;
+  uint8_t GoTop;
+  uint8_t GoBottom;
   uint8_t SensorTop;
   uint8_t SensorBottom;
 } BlindsState_t;
-
-int i, j;
-
 static BlindsState_t sBlindsState;
+
+// Keep IR Top/Bottom sensor state. (used for debugging)
+int sPrevSensorTop;
+int sPrevSensorBottom;
+
+// Know when a Ble device is connected.
+bool sBleConnectedStatus;
+
+//          Define IO Pins  and Gearmotor H-Bridge relay control functions  
+/*________________________________________________________________________________________*/
+
+// Set H-Bridge relay control pins (Swap Hot/Cold relays must always be swapped together) 
+int Pin_IrSensorBottom       = D2;
+int Pin_IrSensorTop          = D3;
+int Pin_BlindsSwapColdRelay  = D4;
+int Pin_BlindsSwapHotRelay   = D5;
+int Pin_BlindsStartStopRelay = D6;
+int Pin_BleLED               = D7;
+
+// Define H-Bridge relay control functions (Both Relays must be switched together)
+void RollBlindsUp()   { digitalWrite(Pin_BlindsSwapColdRelay,  LOW); digitalWrite(Pin_BlindsSwapHotRelay,  LOW);  }
+void RollBlindsDown() { digitalWrite(Pin_BlindsSwapColdRelay, HIGH); digitalWrite(Pin_BlindsSwapHotRelay, HIGH); }
+
+void BlindsSetPower(bool ActivatePower) 
+{
+  if (ActivatePower)
+    digitalWrite(Pin_BlindsStartStopRelay, LOW);
+  else
+    digitalWrite(Pin_BlindsStartStopRelay,  HIGH);
+}
+
+//          Define Bluetooth services and OnDataReceived callback function
+/*________________________________________________________________________________________*/
+
+// Bluetooth characteristics
+const char* serviceUuid  = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* BlindsPower  = "6E400004-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* BlindsUp     = "6E400005-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* BlindsDown   = "6E400006-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* BlindsTop    = "6E400007-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* BlindsBottom = "6E400008-B5A3-F393-E0A9-E50E24DCCA9E";
 
 // Static function for handling Bluetooth Low Energy callbacks
 static void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice& peer, void* context) {
@@ -54,25 +84,51 @@ static void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice&
   if (context == BlindsUp)
   {
     sBlindsState.GoUp = data[0];
-    Log.info("Blinds Going Up.");
+    Log.info("Blinds Up characteristic received %d", data[0]);
   }
   else if (context == BlindsDown)
   {
     sBlindsState.GoDown = data[0];
-    Log.info("Blinds Going Down.");
+    Log.info("Blinds Down characteristic received %d", data[0]);
+  }
+  else if (context == BlindsTop)
+  {
+    sBlindsState.GoTop = data[0];
+    Log.info("Blinds Top characteristic received %d", data[0]);
+  }
+  else if (context == BlindsBottom)
+  {
+    sBlindsState.GoBottom = data[0];
+    Log.info("Blinds Bottom characteristic received %d", data[0]);
+  }
+  else if (context == BlindsPower)
+  {
+    sBlindsState.Power = data[0];
+    Log.info("Blinds Power characteristic received %d", data[0]);
   }
 }
 
+void onConnect   (const BlePeerDevice& peer, void* context) { sBleConnectedStatus = true; }
+void onDisconnect(const BlePeerDevice& peer, void* context) { sBleConnectedStatus = false; }
+
+
+//                                  setup() and loop() functions
+/*________________________________________________________________________________________*/
+
 void setup() {
-  // Setup Stepper Motor control pins
-  pinMode(D4, OUTPUT);
-  pinMode(D5, OUTPUT);
-  pinMode(D6, OUTPUT);
-  pinMode(D7, OUTPUT);
+  // Setup relay control pins (Swap Hot/Cold relays must always be swapped together)
+  pinMode(Pin_BlindsSwapColdRelay,  OUTPUT);
+  pinMode(Pin_BlindsSwapHotRelay,   OUTPUT);
+  pinMode(Pin_BlindsStartStopRelay, OUTPUT);
+  pinMode(Pin_IrSensorTop,          INPUT_PULLDOWN);
+  pinMode(Pin_IrSensorBottom,       INPUT_PULLDOWN);
 
   // Initialize Blinds State Structure
+  sBlindsState.Power        = 0;
   sBlindsState.GoUp         = 0;
   sBlindsState.GoDown       = 0;
+  sBlindsState.GoTop        = 0;
+  sBlindsState.GoBottom     = 0;
   sBlindsState.SensorTop    = 0; 
   sBlindsState.SensorBottom = 0;
 
@@ -80,74 +136,80 @@ void setup() {
   BleUuid BlindsService(serviceUuid);
 
   // Initialize/Add the BLE characteristics
-  BleCharacteristic redCharacteristic("BlindsUp", BleCharacteristicProperty::WRITE_WO_RSP, BlindsUp, serviceUuid, onDataReceived, (void*)BlindsUp);
-  BleCharacteristic greenCharacteristic("BlindsDown", BleCharacteristicProperty::WRITE_WO_RSP, BlindsDown, serviceUuid, onDataReceived, (void*)BlindsDown);
-  BLE.addCharacteristic(redCharacteristic);
-  BLE.addCharacteristic(greenCharacteristic);
+  BleCharacteristic BlindsPowerCharacteristic ("BlindsPower", BleCharacteristicProperty::WRITE_WO_RSP, BlindsPower, serviceUuid, onDataReceived, (void*)BlindsPower);
+  BleCharacteristic BlindsUpCharacteristic    ("BlindsUp", BleCharacteristicProperty::WRITE_WO_RSP, BlindsUp, serviceUuid, onDataReceived, (void*)BlindsUp);
+  BleCharacteristic BlindsDownCharacteristic  ("BlindsDown", BleCharacteristicProperty::WRITE_WO_RSP, BlindsDown, serviceUuid, onDataReceived, (void*)BlindsDown);
+  BleCharacteristic BlindsTopCharacteristic   ("BlindsTop", BleCharacteristicProperty::WRITE_WO_RSP, BlindsTop, serviceUuid, onDataReceived, (void*)BlindsTop);
+  BleCharacteristic BlindsBottomCharacteristic("BlindsBottom", BleCharacteristicProperty::WRITE_WO_RSP, BlindsBottom, serviceUuid, onDataReceived, (void*)BlindsBottom);
+  BLE.addCharacteristic(BlindsPowerCharacteristic);
+  BLE.addCharacteristic(BlindsUpCharacteristic);
+  BLE.addCharacteristic(BlindsDownCharacteristic);
+  BLE.addCharacteristic(BlindsTopCharacteristic);
+  BLE.addCharacteristic(BlindsBottomCharacteristic);
+
+  // Set disconnect handler
+  BLE.onDisconnected(onDisconnect,NULL);
+  // Set connect event handler
+  BLE.onConnected(onConnect,NULL);
 
   // BLE Advertising data
   BleAdvertisingData advData;
   advData.appendServiceUUID(BlindsService);   // Add the Blinds Level service
   BLE.advertise(&advData);                    // Start advertising!
 
-
-  i = 0;
-  j = 0;
+  sPrevSensorTop = 0;
+  sPrevSensorBottom = 0;
 }
  
 
 void loop() {
 
-  // int loops = 1000;
+  // Should use the built in D7 light indicator to show BLE device connected (currently not working..?)
+  if (sBleConnectedStatus)
+    digitalWrite(Pin_BleLED, HIGH);
+  else
+    digitalWrite(Pin_BleLED, LOW);
 
-  // if (i == 100)
-  // {
-  //   //Log.info("looping...: %d", j);
-  //   i = 0;
-  //   j += 1;
-  // }
-  // i += 1;
+  sBlindsState.SensorTop    = digitalRead(Pin_IrSensorTop);
+  sBlindsState.SensorBottom = digitalRead(Pin_IrSensorBottom);
+
+  if (sBlindsState.SensorTop != sPrevSensorTop)
+  {
+    Log.info("Blinds SensorTop changed: %d", sBlindsState.SensorTop);
+    sPrevSensorTop = sBlindsState.SensorTop;
+  }
+  if (sBlindsState.SensorBottom != sPrevSensorBottom)
+  {
+    Log.info("Blinds SensorBottom changed: %d", sBlindsState.SensorBottom);
+    sPrevSensorBottom = sBlindsState.SensorBottom;
+  }
+
+  bool lCalcActivatePower = false;
 
   if (sBlindsState.GoUp)
   {
-    RotateStepperMotorClockwiseUp();
+    RollBlindsUp();
+    if (sBlindsState.Power && !sBlindsState.SensorTop)
+      lCalcActivatePower = true;
   }
   else if (sBlindsState.GoDown)
   {
-    RotateStepperMotorCounterclockwiseDown();
+    RollBlindsDown();
+    if (sBlindsState.Power && sBlindsState.SensorBottom)
+      lCalcActivatePower = true;
   }
-
-
   
-}
+  BlindsSetPower(lCalcActivatePower);
 
-void RotateStepperMotorClockwiseUp()
-{
-  digitalWrite(D7, HIGH); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-  delay(sStepUpDelay);
-
-  digitalWrite(D7, LOW); digitalWrite(D6, HIGH); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-  delay(sStepUpDelay);
-
-  digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, HIGH); digitalWrite(D4, LOW);
-  delay(sStepUpDelay);
-
-  digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, HIGH);
-  delay(sStepUpDelay);
-}
-
-void RotateStepperMotorCounterclockwiseDown()
-{
-  digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, HIGH);
-  delay(sStepDownDelay);
-
-  digitalWrite(D7, LOW); digitalWrite(D6, LOW); digitalWrite(D5, HIGH); digitalWrite(D4, LOW);
-  delay(sStepDownDelay);
-
-  digitalWrite(D7, LOW); digitalWrite(D6, HIGH); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-  delay(sStepDownDelay);
-
-  digitalWrite(D7, HIGH); digitalWrite(D6, LOW); digitalWrite(D5, LOW); digitalWrite(D4, LOW);
-  delay(sStepDownDelay);
+  // RollBlindsOn();
+  // delay(3000);
+  // RollBlindsUp();
+  // delay(3000);
+  // RollBlindsDown();
+  // delay(3000);
+  // RollBlindsOff();
+  // int val = analogRead(A2);
+  // Log.info("pot value: %d", val);
+  // delay(3000);
 }
 
