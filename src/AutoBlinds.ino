@@ -11,6 +11,9 @@
 
 #include "Particle.h"
 
+// Do not connect to the LAN and internet
+SYSTEM_MODE(MANUAL);
+
 SerialLogHandler logHandler(115200, LOG_LEVEL_ERROR, {
     { "app", LOG_LEVEL_TRACE }, // enable all app messages
 });
@@ -27,15 +30,23 @@ typedef struct {
 } BlindsState_t;
 static BlindsState_t sBlindsState;
 
+// Keep IR Top/Bottom sensor state. (used for debugging)
+int sPrevSensorTop;
+int sPrevSensorBottom;
+
+// Know when a Ble device is connected.
+bool sBleConnectedStatus;
+
 //          Define IO Pins  and Gearmotor H-Bridge relay control functions  
 /*________________________________________________________________________________________*/
 
 // Set H-Bridge relay control pins (Swap Hot/Cold relays must always be swapped together) 
-int Pin_IrSensorTop          = D3;
 int Pin_IrSensorBottom       = D2;
-int Pin_BlindsSwapColdRelay  = D5;
-int Pin_BlindsSwapHotRelay   = D6;
-int Pin_BlindsStartStopRelay = D7;
+int Pin_IrSensorTop          = D3;
+int Pin_BlindsSwapColdRelay  = D4;
+int Pin_BlindsSwapHotRelay   = D5;
+int Pin_BlindsStartStopRelay = D6;
+int Pin_BleLED               = D7;
 
 // Define H-Bridge relay control functions (Both Relays must be switched together)
 void RollBlindsUp()   { digitalWrite(Pin_BlindsSwapColdRelay,  LOW); digitalWrite(Pin_BlindsSwapHotRelay,  LOW);  }
@@ -97,8 +108,9 @@ static void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice&
   }
 }
 
-int sPrevSensorTop;
-int sPrevSensorBottom;
+void onConnect   (const BlePeerDevice& peer, void* context) { sBleConnectedStatus = true; }
+void onDisconnect(const BlePeerDevice& peer, void* context) { sBleConnectedStatus = false; }
+
 
 //                                  setup() and loop() functions
 /*________________________________________________________________________________________*/
@@ -135,6 +147,11 @@ void setup() {
   BLE.addCharacteristic(BlindsTopCharacteristic);
   BLE.addCharacteristic(BlindsBottomCharacteristic);
 
+  // Set disconnect handler
+  BLE.onDisconnected(onDisconnect,NULL);
+  // Set connect event handler
+  BLE.onConnected(onConnect,NULL);
+
   // BLE Advertising data
   BleAdvertisingData advData;
   advData.appendServiceUUID(BlindsService);   // Add the Blinds Level service
@@ -146,6 +163,15 @@ void setup() {
  
 
 void loop() {
+  sBlindsState.SensorTop    = digitalRead(Pin_IrSensorTop);
+  sBlindsState.SensorBottom = digitalRead(Pin_IrSensorBottom);
+
+  // Should use the built in D7 light indicator to show BLE device connected (currently not working..?)
+  if (sBleConnectedStatus)
+    digitalWrite(Pin_BleLED, HIGH);
+  else
+    digitalWrite(Pin_BleLED, LOW);
+
   sBlindsState.SensorTop    = digitalRead(Pin_IrSensorTop);
   sBlindsState.SensorBottom = digitalRead(Pin_IrSensorBottom);
 
